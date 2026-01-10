@@ -4,24 +4,24 @@ import time
 
 TOKEN = "8206837693:AAGQB86CiT7g2wZOFg73daDA4Jg4MMZWE8c"
 
-# 👑 DAFTAR USER YANG BOLEH MENGGUNAKAN BOT
-# Tambahkan ID Telegram siapa saja di sini
 ALLOWED_USERS = [
-    6095762919,   # kamu
-    8458676120,   # user lain
+    6095762919,
+    8458676120,
 ]
 
 bot = telebot.TeleBot(TOKEN)
 
-# SESSION LOGIN
 sessions = {}
 TIMEOUT = 60  # detik
+
 
 def is_allowed(message):
     return message.from_user.id in ALLOWED_USERS
 
+
 def deny(message):
     bot.reply_to(message, "⛔ Kamu tidak diizinkan menggunakan bot ini")
+
 
 # ================= START =================
 @bot.message_handler(commands=['start'])
@@ -38,6 +38,7 @@ def start(message):
         "/rankcpm2"
     )
 
+
 # ================= CPM1 =================
 @bot.message_handler(commands=['rankcpm1'])
 def cpm1_start(message):
@@ -52,6 +53,7 @@ def cpm1_start(message):
     }
 
     bot.reply_to(message, "📧 Masukkan EMAIL CPM1:")
+
 
 # ================= CPM2 =================
 @bot.message_handler(commands=['rankcpm2'])
@@ -68,10 +70,15 @@ def cpm2_start(message):
 
     bot.reply_to(message, "📧 Masukkan EMAIL CPM2:")
 
-# ================= LOGIN FLOW =================
-@bot.message_handler(func=lambda m: m.from_user.id in sessions)
+
+# ================= LOGIN FLOW (FIXED) =================
+@bot.message_handler(content_types=['text'])
 def login_flow(message):
     user_id = message.from_user.id
+
+    if user_id not in sessions:
+        return
+
     sess = sessions[user_id]
 
     # timeout
@@ -81,15 +88,15 @@ def login_flow(message):
         return
 
     if sess["step"] == "email":
-        sess["email"] = message.text
+        sess["email"] = message.text.strip()
         sess["step"] = "password"
         sess["time"] = time.time()
         bot.reply_to(message, "🔒 Masukkan PASSWORD:")
         return
 
     if sess["step"] == "password":
-        password = message.text
         email = sess["email"]
+        password = message.text.strip()
         tool = sess["tool"]
 
         del sessions[user_id]
@@ -105,7 +112,6 @@ def login_flow(message):
             bot.send_message(message.chat.id, f"❌ Error:\n{e}")
             return
 
-        # batasi output panjang
         if len(result) > 3500:
             with open("result.txt", "w") as f:
                 f.write(result)
@@ -113,6 +119,7 @@ def login_flow(message):
                 bot.send_document(message.chat.id, f)
         else:
             bot.send_message(message.chat.id, result)
+
 
 print("🤖 Bot berjalan | Login via Telegram")
 bot.infinity_polling()
