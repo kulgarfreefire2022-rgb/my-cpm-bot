@@ -1,107 +1,178 @@
 import telebot
 import subprocess
 import time
+from datetime import date
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+# ================= KONFIGURASI =================
 TOKEN = "8206837693:AAGQB86CiT7g2wZOFg73daDA4Jg4MMZWE8c"
 
-ALLOWED_USERS = [
-    6095762919,
-    8458676120,
+# USER PREMIUM (ISI DENGAN USER ID TELEGRAM)
+PREMIUM_USERS = [
+    6095762919,  # contoh
 ]
 
+TIMEOUT = 300  # 5 menit
 bot = telebot.TeleBot(TOKEN)
 
 sessions = {}
-TIMEOUT = 60  # detik
+daily_usage = {}
 
+# ================= HELPER =================
+def is_premium(uid):
+    return uid in PREMIUM_USERS
 
-def is_allowed(message):
-    return message.from_user.id in ALLOWED_USERS
+def can_inject(uid):
+    if is_premium(uid):
+        return True
 
+    today = str(date.today())
+    if uid not in daily_usage or daily_usage[uid]["date"] != today:
+        daily_usage[uid] = {"date": today, "count": 0}
 
-def deny(message):
-    bot.reply_to(message, "⛔ Kamu tidak diizinkan menggunakan bot ini")
+    return daily_usage[uid]["count"] < 1
 
+def increase_usage(uid):
+    today = str(date.today())
+    if uid not in daily_usage or daily_usage[uid]["date"] != today:
+        daily_usage[uid] = {"date": today, "count": 0}
+    daily_usage[uid]["count"] += 1
+
+# ================= MENU =================
+def main_menu():
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        InlineKeyboardButton("🚘 CPM 1", callback_data="menu_cpm1"),
+        InlineKeyboardButton("🚖 CPM 2", callback_data="menu_cpm2"),
+    )
+    return kb
+
+def cpm_menu(cpm):
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        InlineKeyboardButton("👑 INJECT RANK KING", callback_data=f"inject_{cpm}"),
+        InlineKeyboardButton("⬅️ Back", callback_data="back"),
+    )
+    return kb
 
 # ================= START =================
 @bot.message_handler(commands=['start'])
 def start(message):
-    if not is_allowed(message):
-        deny(message)
-        return
+    uid = message.from_user.id
+    status = "💎 PREMIUM (Unlimited)" if is_premium(uid) else "🆓 FREE (1x / hari)"
 
-    bot.reply_to(
-        message,
-        "🤖 Bot Rank King CPM Aktif\n\n"
-        "📌 Command:\n"
-        "/rankcpm1\n"
-        "/rankcpm2"
+    bot.send_message(
+        message.chat.id,
+        "⭐ *RANK KING CPM BOT*\n\n"
+        f"Status Akun: *{status}*\n\n"
+        "Pilih menu di bawah 👇",
+        reply_markup=main_menu(),
+        parse_mode="Markdown"
     )
 
+# ================= CALLBACK =================
+@bot.callback_query_handler(func=lambda call: True)
+def callback(call):
+    uid = call.from_user.id
 
-# ================= CPM1 =================
-@bot.message_handler(commands=['rankcpm1'])
-def cpm1_start(message):
-    if not is_allowed(message):
-        deny(message)
-        return
+    if call.data == "menu_cpm1":
+        bot.edit_message_text(
+            "🚘 *CPM 1*",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=cpm_menu("cpm1"),
+            parse_mode="Markdown"
+        )
 
-    sessions[message.from_user.id] = {
-        "step": "email",
-        "tool": "cpm1",
-        "time": time.time()
-    }
+    elif call.data == "menu_cpm2":
+        bot.edit_message_text(
+            "🚖*CPM 2*",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=cpm_menu("cpm2"),
+            parse_mode="Markdown"
+        )
 
-    bot.reply_to(message, "📧 Masukkan EMAIL CPM1:")
+    elif call.data.startswith("inject_"):
+        if uid in sessions:
+            bot.send_message(call.message.chat.id, "⏳ Selesaikan proses sebelumnya.")
+            return
 
+        if not can_inject(uid):
+            bot.send_message(
+                call.message.chat.id,
+                "⛔ *LIMIT FREE TERCAPAI*\n\n"
+                "Akun FREE hanya 1x / hari.\n"
+                "Upgrade ke *PREMIUM* untuk akses fitur di @AWIMEDAN0",
+                parse_mode="Markdown"
+            )
+            return
 
-# ================= CPM2 =================
-@bot.message_handler(commands=['rankcpm2'])
-def cpm2_start(message):
-    if not is_allowed(message):
-        deny(message)
-        return
+        tool = call.data.replace("inject_", "")
+        sessions[uid] = {
+            "step": "email",
+            "tool": tool,
+            "time": time.time(),
+            "email_locked": False
+        }
 
-    sessions[message.from_user.id] = {
-        "step": "email",
-        "tool": "cpm2",
-        "time": time.time()
-    }
+        bot.send_message(call.message.chat.id, f"📧 Masukkan EMAIL {tool.upper()}:")
 
-    bot.reply_to(message, "📧 Masukkan EMAIL CPM2:")
+    elif call.data == "back":
+        bot.edit_message_text(
+            "⬅️ Menu utama",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=main_menu()
+        )
 
-
-# ================= LOGIN FLOW (FIXED) =================
+# ================= LOGIN FLOW (ANTI BUG TOTAL) =================
 @bot.message_handler(content_types=['text'])
 def login_flow(message):
-    user_id = message.from_user.id
+    uid = message.from_user.id
+    text = message.text.strip()
 
-    if user_id not in sessions:
+    if uid not in sessions:
+        bot.reply_to(message, "⚠️ Tekan menu *INJECT RANK KING* terlebih dahulu.", parse_mode="Markdown")
         return
 
-    sess = sessions[user_id]
+    sess = sessions[uid]
 
-    # timeout
+    # TIMEOUT
     if time.time() - sess["time"] > TIMEOUT:
-        del sessions[user_id]
-        bot.reply_to(message, "⌛ Waktu login habis, ulangi command.")
+        del sessions[uid]
+        bot.reply_to(message, "⌛ Waktu login habis, silakan ulangi.")
         return
 
+    # EMAIL
     if sess["step"] == "email":
-        sess["email"] = message.text.strip()
+        if sess["email_locked"]:
+            bot.reply_to(message, "⛔ Email sudah diterima, masukkan PASSWORD.")
+            return
+
+        if "@" not in text or "." not in text:
+            bot.reply_to(message, "❌ Format email tidak valid.")
+            return
+
+        sess["email"] = text
         sess["step"] = "password"
+        sess["email_locked"] = True
         sess["time"] = time.time()
+
         bot.reply_to(message, "🔒 Masukkan PASSWORD:")
         return
 
+    # PASSWORD
     if sess["step"] == "password":
         email = sess["email"]
-        password = message.text.strip()
+        password = text
         tool = sess["tool"]
+        del sessions[uid]
 
-        del sessions[user_id]
+        if not is_premium(uid):
+            increase_usage(uid)
 
-        bot.reply_to(message, "🔐 Logging in, mohon tunggu...")
+        bot.send_message(message.chat.id, "⏳️ Inject Rank King, mohon tunggu...")
 
         script = "cpm1.py" if tool == "cpm1" else "cpm2.py"
         cmd = f'printf "{email}\\n{password}\\n" | python {script}'
@@ -120,6 +191,6 @@ def login_flow(message):
         else:
             bot.send_message(message.chat.id, result)
 
-
-print("🤖 Bot berjalan | Login via Telegram")
+# ================= RUN =================
+print("🤖 Rank King CPM Bot | OPEN PUBLIC | ONLINE")
 bot.infinity_polling()
