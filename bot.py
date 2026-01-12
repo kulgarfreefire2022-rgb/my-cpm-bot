@@ -11,7 +11,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 # ================= KONFIGURASI =================
 TOKEN = "8206837693:AAEqLu_sWDCXGZzdV3HcxEakWh6gJraXzcM"
 
-OWNER_ID = 6095762919  # OWNER UTAMA (1 ORANG)
+OWNER_ID = 6095762919  # GANTI JIKA PERLU
 
 TIMEOUT = 300
 
@@ -114,38 +114,36 @@ def remaining(uid):
 # ================= NOTIF =================
 def notify_owner_admin_add_premium(admin_id, uid, ptype, expire):
     try:
-        text = (
-            "🔔 *ADMIN ADD PREMIUM*\n\n"
-            f"👤 User: `{uid}`\n"
-            f"💎 Type: *{ptype}*\n"
-            f"⏳ Expire: *{expire if expire else 'UNLIMITED'}*\n"
-            f"🛠 Admin ID: `{admin_id}`"
+        bot.send_message(
+            OWNER_ID,
+            f"🔔 ADMIN ADD PREMIUM\n\n"
+            f"User: {uid}\n"
+            f"Type: {ptype}\n"
+            f"Expire: {expire if expire else 'UNLIMITED'}\n"
+            f"Admin: {admin_id}"
         )
-        bot.send_message(OWNER_ID, text, parse_mode="Markdown")
     except:
         pass
 
 def notify_user_premium(uid, ptype, expire):
     try:
-        text = (
-            "🎉 *PREMIUM AKTIF* 🎉\n\n"
-            f"💎 Type: *{ptype.upper()}*\n"
-            f"⏳ Expire: *{expire if expire else 'UNLIMITED'}*\n\n"
-            "Terima kasih telah membeli / memperpanjang premium 🙏"
+        bot.send_message(
+            int(uid),
+            f"🎉 PREMIUM AKTIF 🎉\n\n"
+            f"Type: {ptype.upper()}\n"
+            f"Expire: {expire if expire else 'UNLIMITED'}"
         )
-        bot.send_message(int(uid), text, parse_mode="Markdown")
     except:
         pass
 
 def notify_user_expire_soon(uid, ptype, expire):
     try:
-        text = (
-            "⏰ *PREMIUM AKAN HABIS (H-1)* ⏰\n\n"
-            f"💎 Type: *{ptype.upper()}*\n"
-            f"⏳ Expire: *{expire}*\n\n"
-            "Segera perpanjang agar tetap bisa menggunakan fitur premium 🙏"
+        bot.send_message(
+            int(uid),
+            f"⏰ PREMIUM AKAN HABIS (H-1)\n\n"
+            f"Type: {ptype.upper()}\n"
+            f"Expire: {expire}"
         )
-        bot.send_message(int(uid), text, parse_mode="Markdown")
     except:
         pass
 
@@ -167,7 +165,6 @@ def expire_checker():
                         notify_user_expire_soon(uid, info["type"], info["expire"])
                         expire_notified[key] = True
                         save_json(EXPIRE_NOTIFY_FILE, expire_notified)
-
         except:
             pass
 
@@ -184,6 +181,14 @@ def main_menu(uid):
         kb.add(InlineKeyboardButton("⚙️ ADMIN PANEL", callback_data="admin_panel"))
     if is_owner(uid):
         kb.add(InlineKeyboardButton("👑 OWNER PANEL", callback_data="owner_panel"))
+    return kb
+
+def cpm_menu(cpm):
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        InlineKeyboardButton("👑 INJECT RANK KING", callback_data=f"inject_{cpm}"),
+        InlineKeyboardButton("⬅️ Back", callback_data="back")
+    )
     return kb
 
 def admin_menu():
@@ -215,12 +220,10 @@ def start(message):
     uid = message.from_user.id
     bot.send_message(
         message.chat.id,
-        f"⭐ *RANK KING CPM BOT*\n\n"
-        f"Status: *{premium_status(uid)}*\n"
-        f"Sisa Limit: *{remaining(uid)}*\n\n"
-        "Pilih menu di bawah 👇",
-        reply_markup=main_menu(uid),
-        parse_mode="Markdown"
+        f"⭐ RANK KING CPM BOT\n\n"
+        f"Status: {premium_status(uid)}\n"
+        f"Sisa Limit: {remaining(uid)}",
+        reply_markup=main_menu(uid)
     )
 
 # ================= CALLBACK =================
@@ -228,29 +231,69 @@ def start(message):
 def callback(call):
     uid = call.from_user.id
 
-    if call.data == "admin_panel" and is_admin(uid):
-        bot.edit_message_text("⚙️ ADMIN PANEL", call.message.chat.id,
-                              call.message.message_id,
-                              reply_markup=admin_menu(), parse_mode="Markdown")
+    if call.data == "menu_cpm1":
+        bot.edit_message_text(
+            "🚘 CPM 1",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=cpm_menu("cpm1")
+        )
+
+    elif call.data == "menu_cpm2":
+        bot.edit_message_text(
+            "🚖 CPM 2",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=cpm_menu("cpm2")
+        )
+
+    elif call.data.startswith("inject_"):
+        if uid in sessions:
+            return
+
+        if not is_premium(uid) and not can_use_free(uid):
+            bot.send_message(
+                call.message.chat.id,
+                "⛔ LIMIT FREE BULAN INI HABIS (1x)"
+            )
+            return
+
+        tool = call.data.replace("inject_", "")
+        sessions[uid] = {"step": "email", "tool": tool, "time": time.time()}
+        bot.send_message(call.message.chat.id, f"📧 Masukkan EMAIL {tool.upper()}:")
+
+    elif call.data == "admin_panel" and is_admin(uid):
+        bot.edit_message_text(
+            "⚙️ ADMIN PANEL",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=admin_menu()
+        )
 
     elif call.data == "owner_panel" and is_owner(uid):
-        bot.edit_message_text("👑 OWNER PANEL", call.message.chat.id,
-                              call.message.message_id,
-                              reply_markup=owner_menu(), parse_mode="Markdown")
+        bot.edit_message_text(
+            "👑 OWNER PANEL",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=owner_menu()
+        )
 
     elif call.data.startswith(("add_", "owner_add_")) and is_admin(uid):
         sessions[uid] = {"step": call.data, "time": time.time()}
         bot.send_message(call.message.chat.id, "Masukkan UID Telegram:")
 
     elif call.data == "owner_list_admin" and is_owner(uid):
-        text = "📋 *DAFTAR ADMIN*\n\n"
-        text += "\n".join([f"- `{a}`" for a in admins]) if admins else "Belum ada admin"
-        bot.send_message(call.message.chat.id, text, parse_mode="Markdown")
+        text = "📋 DAFTAR ADMIN\n\n"
+        text += "\n".join(admins) if admins else "Belum ada admin"
+        bot.send_message(call.message.chat.id, text)
 
     elif call.data == "back":
-        bot.edit_message_text("⬅️ Menu Utama", call.message.chat.id,
-                              call.message.message_id,
-                              reply_markup=main_menu(uid))
+        bot.edit_message_text(
+            "⬅️ Menu Utama",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=main_menu(uid)
+        )
 
 # ================= TEXT HANDLER =================
 @bot.message_handler(content_types=["text"])
@@ -307,7 +350,37 @@ def text_handler(message):
         del sessions[uid]
         return
 
+    # CPM FLOW
+    if sess["step"] == "email":
+        sess["email"] = message.text.strip()
+        sess["step"] = "password"
+        sess["time"] = time.time()
+        bot.reply_to(message, "🔒 Masukkan PASSWORD:")
+        return
+
+    if sess["step"] == "password":
+        email = sess["email"]
+        password = message.text.strip()
+        tool = sess["tool"]
+
+        if not is_premium(uid):
+            increase_usage(uid)
+
+        del sessions[uid]
+
+        bot.send_message(
+            message.chat.id,
+            f"⏳ Inject diproses...\nSisa limit: {remaining(uid)}"
+        )
+
+        script = "cpm1.py" if tool == "cpm1" else "cpm2.py"
+        result = subprocess.getoutput(
+            f'printf "{email}\\n{password}\\n" | python {script}'
+        )
+
+        bot.send_message(message.chat.id, result)
+
 # ================= RUN =================
 threading.Thread(target=expire_checker, daemon=True).start()
-print("🤖 BOT ONLINE | SISTEM BARU AKTIF")
+print("🤖 BOT ONLINE | FINAL FIX")
 bot.infinity_polling()
